@@ -21,9 +21,6 @@ def get_fold_ds(fold, df, preprocess_data):
     ds_valid = ds_valid_raw.map(preprocess_data, batched=True, batch_size=1000, remove_columns=raw_ds_col_names)    
     return train_df, valid_df, ds_train, ds_valid
 
-import math
-import transformers
-
 # Thanks to Nicolas Broad. Taken from https://www.kaggle.com/code/nbroad/8-bit-adam-optimization/notebook
 def get_optimizer(model, args, train_dataset, adam_bits=32):    
     '''

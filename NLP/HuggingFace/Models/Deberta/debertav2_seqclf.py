@@ -5,13 +5,11 @@ import torch
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 '''
-Default deberta-v2 sequence classification head that uses BCEWithLogitsLoss as the loss function.
-Can be used for binary classification tasks as well as regression problems with target variable
-a real value between [0, 1]
+Default deberta-v2 sequence classification head 
 '''
-class DebertaV2ForSeqClfBCEWithLogitsLoss(DebertaV2ForSeqClfBase):
-    def __init__(self, config):
-        super().__init__(config)
+class DebertaV2ForSeqClf(DebertaV2ForSeqClfBase):
+    def __init__(self, config, loss_type: str=None):
+        super().__init__(config, loss_type=loss_type)
 
     def forward(
         self,
@@ -47,9 +45,7 @@ class DebertaV2ForSeqClfBCEWithLogitsLoss(DebertaV2ForSeqClfBase):
         logits = self.classifier(pooled_output)
 
         loss = None
-        if labels is not None:
-            # loss function            
-            loss = self.get_bcewithlogits_loss(logits, labels)
+        loss = self.get_loss(labels, logits)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

@@ -1,5 +1,7 @@
 import shutil
 import glob
+import os
+import sys
 
 def asHours(seconds: float) -> str:
     """
@@ -22,3 +24,18 @@ def delete_checkpoints(run_dir: str):
 
     for file in glob.glob(f"{run_dir}/checkpoint-*"):
         shutil.rmtree(file, ignore_errors=True)
+
+def add_sys_paths(ml_utils_root):
+    '''
+    Find all subdirectories with files within a root directory and adds them to sys.path
+    This allows to import the utility code in files in colab
+    '''
+    # os.walk will give a list of all sub directories with a given directory. It return a tuple of 3 elements with first element
+    # being the subdir path
+    for sub_dir, _, _ in os.walk(ml_utils_root):
+        # check if there is a file in the sub directory
+        # If yes, append the directory path to sys.path as we need the code in the file
+        sub_dir_files = [file for file in os.listdir(sub_dir) if os.path.isfile(os.path.join(sub_dir, file))]    
+        if len(sub_dir_files) > 0:
+            print(sub_dir)
+            sys.path.append(sub_dir)        

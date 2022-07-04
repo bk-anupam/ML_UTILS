@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from loss_functions import CorrLoss
 from typing import Optional, Union, Tuple
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers import DebertaV2Model, DebertaV2PreTrainedModel
@@ -7,7 +8,7 @@ from transformers.models.deberta.modeling_deberta import ContextPooler, StableDr
 
 # base class for implementing custom heads on top of deberta-v2 backbone
 class DebertaV2ForSeqClfBase(DebertaV2PreTrainedModel):    
-    def __init__(self, config):
+    def __init__(self, config, loss_type: str = None):
         super().__init__(config)
 
         num_labels = getattr(config, "num_labels", 2)
@@ -21,7 +22,15 @@ class DebertaV2ForSeqClfBase(DebertaV2PreTrainedModel):
         drop_out = getattr(config, "cls_dropout", None)
         drop_out = self.config.hidden_dropout_prob if drop_out is None else drop_out
         self.dropout = StableDropout(drop_out)
-
+        self.loss_fn = None
+        # if a specific loss type has been specified, use it
+        if loss_type is not None:
+            if loss_type.lower() == "mse":
+                self.loss_fn = nn.MSELoss()
+            elif loss_type.lower() == "bcewithlogits":
+                self.loss_fn = nn.BCEWithLogitsLoss(reduction="mean")
+            elif loss_type.lower() == "pearson":
+                self.loss_fn = CorrLoss()
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -40,7 +49,9 @@ class DebertaV2ForSeqClfBase(DebertaV2PreTrainedModel):
     
     def get_loss(self, logits, labels):
         loss = None
-        if labels is not None:
+        if self.loss_fn is not None:
+            loss = self.loss_fn(logits, labels.view(-1))
+        elif labels is not None:
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     # regression task

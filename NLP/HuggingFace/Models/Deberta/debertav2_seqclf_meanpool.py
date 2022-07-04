@@ -5,8 +5,8 @@ import torch
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 class DebertaV2ForSeqClfMeanPooling(DebertaV2ForSeqClfBase):    
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self, config, loss_type: str=None):
+        super().__init__(config, loss_type=loss_type)
     
     def forward(
         self,
