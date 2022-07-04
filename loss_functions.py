@@ -1,6 +1,11 @@
 import torch
 import torch.nn as nn
 
+class LossType:
+    MSE = "mse"
+    BCE_WITH_LOGITS = "bcewithlogits"
+    PEARSON = "pearson"
+
 # https://www.kaggle.com/competitions/ubiquant-market-prediction/discussion/302977
 class CorrLoss(nn.Module):
     """

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from loss_functions import CorrLoss
+from loss_functions import CorrLoss, LossType
 from typing import Optional, Union, Tuple
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers import DebertaV2Model, DebertaV2PreTrainedModel
@@ -25,11 +25,11 @@ class DebertaV2ForSeqClfBase(DebertaV2PreTrainedModel):
         self.loss_fn = None
         # if a specific loss type has been specified, use it
         if loss_type is not None:
-            if loss_type.lower() == "mse":
+            if loss_type == LossType.MSE:
                 self.loss_fn = nn.MSELoss()
-            elif loss_type.lower() == "bcewithlogits":
+            elif loss_type == LossType.BCE_WITH_LOGITS:
                 self.loss_fn = nn.BCEWithLogitsLoss(reduction="mean")
-            elif loss_type.lower() == "pearson":
+            elif loss_type == LossType.PEARSON:
                 self.loss_fn = CorrLoss()
         # Initialize weights and apply final processing
         self.post_init()
@@ -39,14 +39,7 @@ class DebertaV2ForSeqClfBase(DebertaV2PreTrainedModel):
 
     def set_input_embeddings(self, new_embeddings):
         self.deberta.set_input_embeddings(new_embeddings)
-    
-    def get_bcewithlogits_loss(self, logits, labels):
-        loss_fn = nn.BCEWithLogitsLoss(reduction="mean")
-        # convert the logits to 1d tensor and same datatype as the labels 
-        # logits = logits.view(-1).to(labels.dtype)
-        loss = loss_fn(logits, labels.view(-1))
-        return loss
-    
+        
     def get_loss(self, logits, labels):
         loss = None
         # custom logic to handle regression problems with explicitly specified loss functions
