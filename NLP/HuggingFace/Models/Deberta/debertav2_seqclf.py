@@ -45,7 +45,7 @@ class DebertaV2ForSeqClf(DebertaV2ForSeqClfBase):
         logits = self.classifier(pooled_output)
 
         loss = None
-        loss = self.get_loss(labels, logits)
+        loss = self.get_loss(logits, labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

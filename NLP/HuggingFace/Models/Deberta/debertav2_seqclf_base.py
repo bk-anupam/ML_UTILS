@@ -49,8 +49,11 @@ class DebertaV2ForSeqClfBase(DebertaV2PreTrainedModel):
     
     def get_loss(self, logits, labels):
         loss = None
-        if self.loss_fn is not None:
+        # custom logic to handle regression problems with explicitly specified loss functions
+        if self.loss_fn is not None and self.num_labels == 1:
+            logits = logits.view(-1).to(labels.dtype)
             loss = self.loss_fn(logits, labels.view(-1))
+        # default hugging face loss function handling for all problems
         elif labels is not None:
             if self.config.problem_type is None:
                 if self.num_labels == 1:
