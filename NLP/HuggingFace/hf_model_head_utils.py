@@ -36,7 +36,7 @@ class AttentionHead(nn.Module):
         # Calculate the attention scores 
         # features is hidden state from the last layer [batch_size, seq_len, hidden_size]
         attention_score = self.attention(features)
-        # Apply the attention mask so that the features of the padding tokens are not attended to the representation.
+        # Apply the attention mask so that the features of the padding tokens are not attended to in the representation.
         # At positions corresponding to padding tokens we subtract a big number from the corresponding
         # attention score so as to set the weight hidden state of that particular time step close to 0
         if attention_mask is not None:

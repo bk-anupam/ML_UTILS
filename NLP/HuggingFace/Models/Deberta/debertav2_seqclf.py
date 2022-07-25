@@ -5,7 +5,8 @@ import torch
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 '''
-Default deberta-v2 sequence classification head 
+Default deberta-v2 sequence classification head, uses the pooler output (last layer hidden state
+of the first token [CLS] further processed by a classifier)
 '''
 class DebertaV2ForSeqClf(DebertaV2ForSeqClfBase):
     def __init__(self, config, loss_type: str=None):
@@ -38,9 +39,13 @@ class DebertaV2ForSeqClf(DebertaV2ForSeqClfBase):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-
+        # sequence of hidden states from the last layer [batch_size, seq_len, hidden_size]
         encoder_layer = outputs[0]
+        # The pooling layer takes the hidden state corresponding to the first token of the
+        # sequence , the [CLS] token [:, 0, :], we effectively reduce the 3d tensor to
+        # a 2d tensor with dimensions [batch_size, hidden_size]
         pooled_output = self.pooler(encoder_layer)
+        #[batch_size, hidden_size]
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
