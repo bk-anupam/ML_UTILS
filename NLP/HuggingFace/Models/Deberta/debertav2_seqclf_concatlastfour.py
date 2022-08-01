@@ -69,6 +69,8 @@ class DebertaV2ForSeqClfConcatLastFour(DebertaV2ForSeqClfBase):
             output = (logits,) + outputs[1:]
             return ((loss,) + output) if loss is not None else output
 
+        # we don't want to output intermediate hidden states to avoid OOM error during validation
+        # https://discuss.huggingface.co/t/cuda-out-of-memory-when-using-trainer-with-compute-metrics/2941
         return SequenceClassifierOutput(
-            loss=loss, logits=logits, hidden_states=outputs.hidden_states, attentions=outputs.attentions
+            loss=loss, logits=logits, hidden_states=None, attentions=None
         )
