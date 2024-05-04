@@ -12,7 +12,7 @@ from joblib import dump
 
 # split the training dataframe into kfolds for cross validation. We do this before any processing is done
 # on the data. We use stratified kfold if the target distribution is unbalanced
-def strat_kfold_dataframe(df, target_col_name, num_folds=5, n_bins=None):
+def strat_kfold_dataframe(df, target_col_name, random_state=42, num_folds=5, n_bins=None):
     # we create a new column called kfold and fill it with -1
     df["kfold"] = -1
     # randomize of shuffle the rows of dataframe before splitting is done
@@ -24,7 +24,7 @@ def strat_kfold_dataframe(df, target_col_name, num_folds=5, n_bins=None):
     else:
         # get the target data
         y = df[target_col_name].values
-    skf = model_selection.StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=42)
+    skf = model_selection.StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=random_state)
     for fold, (train_index, val_index) in enumerate(skf.split(X=df, y=y)):
         df.loc[val_index, "kfold"] = fold
     return df   
