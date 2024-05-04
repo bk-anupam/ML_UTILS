@@ -10,8 +10,9 @@ from sklearn import model_selection
 from joblib import dump
 
 
-# split the training dataframe into kfolds for cross validation. We do this before any processing is done on the data.
-def kfold_dataframe(df, target_col_name, num_folds=5, n_bins=None):
+# split the training dataframe into kfolds for cross validation. We do this before any processing is done
+# on the data. We use stratified kfold if the target distribution is unbalanced
+def strat_kfold_dataframe(df, target_col_name, num_folds=5, n_bins=None):
     # we create a new column called kfold and fill it with -1
     df["kfold"] = -1
     # randomize of shuffle the rows of dataframe before splitting is done
