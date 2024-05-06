@@ -19,17 +19,24 @@ def strat_group_kfold_dataframe(df, target_col_name, group_col_name, random_stat
         df.loc[val_index, "kfold"] = fold        
     return df            
 
-def strat_kfold_dataframe(df, target_col_name, random_state, num_folds=5):
+# split the training dataframe into kfolds for cross validation. We do this before any processing is done
+# on the data. We use stratified kfold if the target distribution is unbalanced
+def strat_kfold_dataframe(df, target_col_name, random_state=42, num_folds=5, n_bins=None):
     # we create a new column called kfold and fill it with -1
     df["kfold"] = -1
     # randomize of shuffle the rows of dataframe before splitting is done
-    df.sample(frac=1, random_state=random_state).reset_index(drop=True)
-    y = df[target_col_name].values
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+    # If target is continuous, we need to create bins first before performing stratification
+    if n_bins is not None:
+        df['target_grp'] = pd.cut(df[target_col_name], n_bins, labels=False)
+        y = df['target_grp'].values
+    else:
+        # get the target data
+        y = df[target_col_name].values
     skf = model_selection.StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=random_state)
-    # stratification is done on the basis of y labels, a placeholder for X is sufficient
-    for fold, (train_idx, val_idx) in enumerate(skf.split(X=df, y=y)):
-        df.loc[val_idx, "kfold"] = fold
-    return df     
+    for fold, (train_index, val_index) in enumerate(skf.split(X=df, y=y)):
+        df.loc[val_index, "kfold"] = fold
+    return df   
 
 # This method uses the iterstrat library for multilabel stratification
 def iterstrat_multilabel_stratified_kfold_cv_split(df_train, label_cols, num_folds, random_state):
