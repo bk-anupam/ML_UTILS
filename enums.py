@@ -5,6 +5,8 @@ class ModelName:
     LinearRegression = "LinearRegression"
     RandomForest = "RandomForest"
     LGBM = "LightGBM"
+    XGBoost = "XGBoost"
+    CatBoost = "CatBoost"
     GradientBoostingRegressor = "GradientBoostingRegressor"
 
 class Scaler:
