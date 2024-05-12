@@ -159,9 +159,10 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
         if single_fold:
             break
     return fold_metrics_model, df_val_preds
-
+    
 def train_model(df, model_name, model_params, feature_col_names, target_col_name, 
-                metric=Metrics.MAE, num_folds=5, single_fold=False, persist_model=False):
+                metric=Metrics.MAE, num_folds=5, single_fold=False, persist_model=False,
+                output_path=""):
     val_preds_col = "val_preds"
     print(f"training {model_name}")
     if model_name == ModelName.L2_Ridge:
@@ -179,15 +180,14 @@ def train_model(df, model_name, model_params, feature_col_names, target_col_name
             single_fold=single_fold
         )        
     metrics = [item[0] for item in fold_metrics_model]
-    fold_models = [item[1] for item in fold_metrics_model]
-    # save fold models to pickle files
+    fold_models = [item[1] for item in fold_metrics_model]    
     if persist_model:
         for index, model in enumerate(fold_models):
-            fold_model_name = f"./models/{model_name}_{index}.joblib"        
+            fold_model_name = output_path + f"{model_name}_{index}.joblib"        
             dump(model, fold_model_name)
             print(f"saved {fold_model_name}")
     cv = get_cv_score(df_val_preds, target_col_name, val_preds_col, metric)
-    df_val_preds.to_csv(f"./data/df_val_preds_{model_name}.csv")
+    df_val_preds.to_csv(output_path + f"df_val_preds_{model_name}.csv")
     print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")
     print(f"{model_name} CV score = {cv}")
     return fold_metrics_model

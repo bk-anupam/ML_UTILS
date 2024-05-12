@@ -1,6 +1,14 @@
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import PowerTransformer
 
+def get_null_stats(df):
+    null_count = df.isnull().sum()
+    col_null_counts = {col: null_cnt for col, null_cnt in null_count.iteritems() if null_cnt > 0}
+    if len(col_null_counts) == 0:
+        print(f"There are no columns with null values")
+    else:
+        print(col_null_counts)
 
 def get_outliers_count(df, col_name):
     """
@@ -44,6 +52,19 @@ def process_outliers_iqr(df, col_name, remove_outliers=True):
         'IQR': [IQR],
         'min_val': [min_val],
         'max_val': [max_val],
-        'outlier_count': [outlier_count]
+        'outlier_count': [outlier_count],
+        'outlier_pct': [outlier_count / df.shape[0]]
     })    
     return df, result
+
+def power_transform(df, col_name, skew_threshold=0.5):    
+    transformed = False
+    skew = df[col_name].skew()
+    print(f"{col_name} has skewness of {skew}")
+    power_transformer = PowerTransformer(method='yeo-johnson', standardize=True)    
+    if abs(skew) > skew_threshold:
+        transformed = True
+        print("Will apply power transform.")
+        col_transformed = power_transformer.fit_transform(df[[col_name]])
+        df.loc[:, col_name] = col_transformed
+    return df, transformed
