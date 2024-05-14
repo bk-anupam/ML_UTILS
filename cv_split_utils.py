@@ -38,6 +38,17 @@ def strat_kfold_dataframe(df, target_col_name, random_state=42, num_folds=5, n_b
         df.loc[val_index, "kfold"] = fold
     return df   
 
+# split the training dataframe into kfolds for cross validation. We do this before any processing is done on the data. 
+def kfold_dataframe(df, random_state=42, num_folds=5):
+    # we create a new column called kfold and fill it with -1
+    df["kfold"] = -1
+    # randomize of shuffle the rows of dataframe before splitting is done
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)    
+    skf = model_selection.KFold(n_splits=num_folds, shuffle=True, random_state=random_state)
+    for fold, (train_index, val_index) in enumerate(skf.split(X=df)):
+        df.loc[val_index, "kfold"] = fold
+    return df   
+
 # This method uses the iterstrat library for multilabel stratification
 def iterstrat_multilabel_stratified_kfold_cv_split(df_train, label_cols, num_folds, random_state):
     mskf = MultilabelStratifiedKFold(n_splits=num_folds, shuffle=True, random_state=random_state)    
