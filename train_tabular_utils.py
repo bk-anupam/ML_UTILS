@@ -5,7 +5,7 @@ import optuna
 import lightgbm as lgbm
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_log_error 
+from sklearn.metrics import mean_absolute_error, mean_squared_log_error, mean_squared_error 
 from sklearn.linear_model import Ridge, Lasso, LinearRegression
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from enums import ModelName, Scaler, Metrics
@@ -84,7 +84,7 @@ def get_eval_metric(metric, val_y, val_y_pred):
     fold_train_metric = None
     if metric == Metrics.MAE:
         fold_train_metric = mean_absolute_error(val_y, val_y_pred)
-    elif metric == Metrics.RMSLE:
+    elif metric == Metrics.RMSLE:                        
         # we can't use negative predictions for RMSLE
         val_y_pred = [item if item > 0 else 0 for item in val_y_pred]
         fold_train_metric = np.sqrt(mean_squared_log_error(val_y, val_y_pred))
@@ -97,7 +97,7 @@ def train_fold(train_X, train_y, val_X, val_y, model, metric=Metrics.MAE):
     fold_train_metric = get_eval_metric(metric, val_y, val_y_pred)
     return fold_train_metric, model, val_y_pred
 
-def train_fold_xgb(train_X, train_y, val_X, val_y, model_params, metric):
+def train_fold_xgb(train_X, train_y, val_X, val_y, model_params, metric, transform_target=False):
     fold_train_metric = None
     model = xgb.XGBRegressor(**model_params)
     model.fit(
@@ -108,11 +108,14 @@ def train_fold_xgb(train_X, train_y, val_X, val_y, model_params, metric):
             verbose=model_params["verbosity"]
         )
     val_y_pred = model.predict(val_X)
+    if metric == Metrics.RMSLE and transform_target:
+        # Since we have trained on np.log1p(y) instead of y, we need to reverse the transformation to extract the actual predictions
+        val_y_pred = np.expm1(val_y_pred)
     fold_train_metric = get_eval_metric(metric, val_y, val_y_pred)
     return fold_train_metric, model, val_y_pred
 
 def train_fold_lgbm(train_df, train_y, val_df, val_y, feature_col_names, metric,
-                    params=None, callbacks=None):
+                    params=None, transform_target=False, callbacks=None):
     train_data = lgbm.Dataset(data=train_df[feature_col_names], label=train_y, feature_name="auto")    
     val_data = lgbm.Dataset(data=val_df[feature_col_names], label=val_y, feature_name="auto")
     model = lgbm.train(
@@ -122,17 +125,23 @@ def train_fold_lgbm(train_df, train_y, val_df, val_y, feature_col_names, metric,
     )
     val_df = val_df[feature_col_names]
     val_preds = model.predict(val_df, num_iteration=model.best_iteration)
+    if metric == Metrics.RMSLE and transform_target:
+        # Since we have trained on np.log1p(y) instead of y, we need to reverse the transformation to extract the actual predictions
+        val_preds = np.expm1(val_preds)
     fold_train_metric = get_eval_metric(metric, val_y, val_preds)
     return fold_train_metric, model, val_preds    
 
 def run_training(model_name, df_train, target_col_name, feature_col_names=None, 
                  metric=Metrics.MAE, num_folds=5, single_fold=False, model_params=None, 
-                 val_preds_col="val_preds", suppress_print=False):
+                 val_preds_col="val_preds", suppress_print=False, transform_target=False):
     fold_metrics_model = []
     df_val_preds = pd.DataFrame()    
     for fold in range(num_folds):
         df_train_fold, df_val_fold = get_fold_df(df_train, fold)        
         train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_col_names, target_col_name)        
+        # To train on RMSLE objective instead of RMSEwe need to transform the target values
+        if metric == Metrics.RMSLE and transform_target:
+            train_y = np.log1p(train_y)            
         if model_name == ModelName.LGBM:            
             fold_val_metric, fold_model, fold_val_preds = train_fold_lgbm(
                 train_df=df_train_fold, 
@@ -141,7 +150,8 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
                 val_y=val_y, 
                 feature_col_names=feature_col_names,
                 metric=metric,
-                params=model_params
+                params=model_params,
+                transform_target=transform_target
             )
         elif model_name == ModelName.XGBoost:
             fold_val_metric, fold_model, fold_val_preds = train_fold_xgb(
@@ -152,7 +162,7 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
             fold_val_metric, fold_model, fold_val_preds = train_fold(train_X, train_y, val_X, val_y, model, metric=metric)
 
         if not suppress_print:
-            print(f"fold {fold} metric = {fold_val_metric}")
+            print(f"Fold {fold} - {model_name} - {metric} : {fold_val_metric}")
         df_val_fold[val_preds_col] = fold_val_preds
         df_val_preds = pd.concat([df_val_preds, df_val_fold], axis=0)
         fold_metrics_model.append((fold_val_metric, fold_model))
@@ -162,7 +172,7 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
     
 def train_model(df, model_name, model_params, feature_col_names, target_col_name, 
                 metric=Metrics.MAE, num_folds=5, single_fold=False, persist_model=False,
-                output_path=""):
+                output_path="", transform_target=False):
     val_preds_col = "val_preds"
     print(f"training {model_name}")
     if model_name == ModelName.L2_Ridge:
@@ -177,7 +187,8 @@ def train_model(df, model_name, model_params, feature_col_names, target_col_name
             num_folds=num_folds,
             model_params=model_params,
             val_preds_col=val_preds_col,
-            single_fold=single_fold
+            single_fold=single_fold,
+            transform_target=transform_target
         )        
     metrics = [item[0] for item in fold_metrics_model]
     fold_models = [item[1] for item in fold_metrics_model]    
