@@ -99,6 +99,7 @@ def train_fold(train_X, train_y, val_X, val_y, model, metric=Metrics.MAE):
 
 def train_fold_xgb(train_X, train_y, val_X, val_y, model_params, metric, transform_target=False):
     fold_train_metric = None
+    print(model_params)
     model = xgb.XGBRegressor(**model_params)
     model.fit(
             train_X, 
@@ -110,6 +111,7 @@ def train_fold_xgb(train_X, train_y, val_X, val_y, model_params, metric, transfo
     val_y_pred = model.predict(val_X)
     if metric == Metrics.RMSLE and transform_target:
         # Since we have trained on np.log1p(y) instead of y, we need to reverse the transformation to extract the actual predictions
+        print('Converting predictions to original scale')
         val_y_pred = np.expm1(val_y_pred)
     fold_train_metric = get_eval_metric(metric, val_y, val_y_pred)
     return fold_train_metric, model, val_y_pred
@@ -141,6 +143,7 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
         train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_col_names, target_col_name)        
         # To train on RMSLE objective instead of RMSEwe need to transform the target values
         if metric == Metrics.RMSLE and transform_target:
+            print('Transforming target')
             train_y = np.log1p(train_y)            
         if model_name == ModelName.LGBM:            
             fold_val_metric, fold_model, fold_val_preds = train_fold_lgbm(
@@ -155,7 +158,7 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
             )
         elif model_name == ModelName.XGBoost:
             fold_val_metric, fold_model, fold_val_preds = train_fold_xgb(
-                train_X, train_y, val_X, val_y, model_params, metric=metric
+                train_X, train_y, val_X, val_y, model_params, metric=metric, transform_target=transform_target
             )
         else:
             model = get_model(model_name, model_params)            
