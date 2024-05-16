@@ -139,7 +139,7 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
     for fold in range(num_folds):
         df_train_fold, df_val_fold = get_fold_df(df_train, fold)        
         train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_col_names, target_col_name)        
-        # To train on RMSLE objective instead of RMSEwe need to transform the target values
+        # To train on RMSLE objective instead of RMSE we need to transform the target values
         if metric == Metrics.RMSLE and transform_target:            
             train_y = np.log1p(train_y)            
         if model_name == ModelName.LGBM:            

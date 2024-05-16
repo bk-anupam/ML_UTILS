@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.preprocessing import PowerTransformer
 
 def get_null_stats(df):
@@ -68,3 +70,60 @@ def power_transform(df, col_name, skew_threshold=0.5):
         col_transformed = power_transformer.fit_transform(df[[col_name]])
         df.loc[:, col_name] = col_transformed
     return df, transformed
+
+def plot_feature_distribution(train_df, test_df, cols_float, fig_size):
+    # plot the distribution of numerical features . Also check if train and  test data have roughly 
+    # the same distribution for numerical features
+    n_features = len(cols_float)
+    n_rows = (n_features + 1) // 2  # Integer division for ceiling    
+    fig, axes = plt.subplots(nrows=n_rows, ncols=2, figsize=fig_size, dpi=100)    
+    fig.suptitle('Distribution of Features in Train and Test Sets', fontsize=12)
+    plt.subplots_adjust(hspace=0.3)
+    # Loop through features and create subplots
+    for i, col_name in enumerate(cols_float):
+        row = i // 2
+        col = i % 2        
+        sns.histplot(x=train_df[col_name], label="Train", kde=True, fill=True, color="orange", ax=axes[row, col])
+        sns.histplot(x=test_df[col_name], label="Test", kde=True, fill=True, color="teal", ax=axes[row, col])        
+        axes[row, col].legend()
+        axes[row, col].set_ylabel("count")
+        axes[row, col].set_xlabel(col_name)                
+    # Remove extra subplots if the number of features is odd
+    if n_features % 2 == 0:
+        fig.delaxes(axes[-1, -1])  # Delete the last subplot if there's an empty one
+    fig.tight_layout()
+    plt.show()   
+
+def plot_box_plots(train_df, test_df, cols_float, fig_size):
+    n_rows = len(cols_float)
+    n_cols = 2
+    fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=fig_size, dpi=100)    
+    plt.subplots_adjust(hspace=0.3)
+    for row in range(n_rows):
+        col = 0
+        col_name = cols_float[row]
+        sns.boxplot(x=train_df[col_name], orient='v', color='skyblue', ax=axes[row, col])
+        axes[row, 0].set_ylabel("")
+        axes[row, 0].set_xlabel(col_name)
+        axes[row, 0].set_title(f'Train', fontsize=12)
+        col=1
+        sns.boxplot(x=test_df[col_name], orient='v', color='skyblue', ax=axes[row, col])
+        axes[row, 1].set_ylabel("")
+        axes[row, 1].set_xlabel(col_name)
+        axes[row, 1].set_title(f'Test', fontsize=12)
+    fig.tight_layout()
+    plt.show()       
+
+def plot_feature_target_corr(df, feature_cols, target_col):
+    fig, ax = plt.subplots(figsize=(14, 6))
+    df = df[feature_cols + [target_col]]
+    corr = df.corr()
+    target_feature_interaction = corr[target_col].sort_values(ascending=False)
+    labels = target_feature_interaction.index.to_list()
+    labels.remove(target_col)
+    values = target_feature_interaction.values.tolist()
+    values.pop(0)
+    ax.set_title("Feature target correlation")
+    ax.set_xlabel(f"{target_col} correlation")
+    ax.set_ylabel("Features")
+    ax = sns.barplot(x=values, y=labels, ax=ax)    
