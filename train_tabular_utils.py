@@ -98,8 +98,7 @@ def train_fold(train_X, train_y, val_X, val_y, model, metric=Metrics.MAE):
     return fold_train_metric, model, val_y_pred
 
 def train_fold_xgb(train_X, train_y, val_X, val_y, model_params, metric, transform_target=False):
-    fold_train_metric = None
-    print(model_params)
+    fold_train_metric = None    
     model = xgb.XGBRegressor(**model_params)
     model.fit(
             train_X, 
@@ -110,8 +109,7 @@ def train_fold_xgb(train_X, train_y, val_X, val_y, model_params, metric, transfo
         )
     val_y_pred = model.predict(val_X)
     if metric == Metrics.RMSLE and transform_target:
-        # Since we have trained on np.log1p(y) instead of y, we need to reverse the transformation to extract the actual predictions
-        print('Converting predictions to original scale')
+        # Since we have trained on np.log1p(y) instead of y, we need to reverse the transformation to extract the actual predictions        
         val_y_pred = np.expm1(val_y_pred)
     fold_train_metric = get_eval_metric(metric, val_y, val_y_pred)
     return fold_train_metric, model, val_y_pred
@@ -142,8 +140,7 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
         df_train_fold, df_val_fold = get_fold_df(df_train, fold)        
         train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_col_names, target_col_name)        
         # To train on RMSLE objective instead of RMSEwe need to transform the target values
-        if metric == Metrics.RMSLE and transform_target:
-            print('Transforming target')
+        if metric == Metrics.RMSLE and transform_target:            
             train_y = np.log1p(train_y)            
         if model_name == ModelName.LGBM:            
             fold_val_metric, fold_model, fold_val_preds = train_fold_lgbm(
@@ -201,9 +198,11 @@ def train_model(df, model_name, model_params, feature_col_names, target_col_name
             dump(model, fold_model_name)
             print(f"saved {fold_model_name}")
     cv = get_cv_score(df_val_preds, target_col_name, val_preds_col, metric)
+    mean_metric, std_metric = get_metric_stats(metrics)
     df_val_preds.to_csv(output_path + f"df_val_preds_{model_name}.csv")
     print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")
     print(f"{model_name} CV score = {cv}")
+    print(f"{model_name} Mean {metric} = {mean_metric}, std = {std_metric}")
     return fold_metrics_model
 
 def get_cv_score(df_val_preds, target_col_name, val_preds_col, metric):
@@ -215,3 +214,8 @@ def get_cv_score(df_val_preds, target_col_name, val_preds_col, metric):
     elif metric == Metrics.RMSLE:
         cv_score = np.sqrt(mean_squared_log_error(y_true_cv, y_pred_cv))
     return cv_score
+
+def get_metric_stats(fold_metrics):
+    mean_metric = np.mean(fold_metrics)
+    std_metric = np.std(fold_metrics)
+    return mean_metric, std_metric
