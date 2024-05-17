@@ -122,13 +122,18 @@ def get_metric_stats(fold_metrics):
 
 def train_fold_xgb_cb(model_name, train_X, train_y, val_X, val_y, model_params, metric, transform_target=False):
     fold_train_metric = None
-    model = get_tree_model(model_name, metric, model_params)        
+    model = get_tree_model(model_name, metric, model_params) 
+    verbose = None
+    if model_name == ModelName.CatBoost:       
+        verbose = model_params["verbose"]
+    elif model_name == ModelName.XGBoost:
+        verbose = model_params["verbosity"]
     model.fit(
             train_X, 
             train_y,
             #eval_metric=metric,
             eval_set=[(train_X, train_y), (val_X, val_y)],                        
-            verbose=model_params["verbosity"]
+            verbose=verbose
         )
     val_y_pred = model.predict(val_X)
     if metric == Metrics.RMSLE and transform_target:
