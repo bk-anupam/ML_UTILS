@@ -4,6 +4,7 @@ import statistics
 import optuna
 import lightgbm as lgbm
 import xgboost as xgb
+import catboost
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_log_error, mean_squared_error 
 from sklearn.linear_model import Ridge, Lasso, LinearRegression
@@ -97,9 +98,31 @@ def train_fold(train_X, train_y, val_X, val_y, model, metric=Metrics.MAE):
     fold_train_metric = get_eval_metric(metric, val_y, val_y_pred)
     return fold_train_metric, model, val_y_pred
 
-def train_fold_xgb(train_X, train_y, val_X, val_y, model_params, metric, transform_target=False):
-    fold_train_metric = None    
-    model = xgb.XGBRegressor(**model_params)
+def get_tree_model(model_name, metric, model_params):
+    metric_type = None
+    model = None
+    if metric in [Metrics.MAE, Metrics.RMSLE, Metrics.MSE, Metrics.R2]:
+        metric_type = "regression"
+    else:
+        metric_type = "classification"
+    if model_name == ModelName.XGBoost and metric_type == "regression":    
+        model = xgb.XGBRegressor(**model_params)
+    elif model_name == ModelName.XGBoost and metric_type == "classification":
+        model = xgb.XGBClassifier(**model_params)
+    elif model_name == ModelName.CatBoost and metric_type == "regression":
+        model = catboost.CatBoostRegressor(**model_params)
+    elif model_name == ModelName.CatBoost and metric_type == "classification":
+        model = catboost.CatBoostClassifier(**model_params)
+    return model
+
+def get_metric_stats(fold_metrics):
+    mean_metric = np.mean(fold_metrics)
+    std_metric = np.std(fold_metrics)
+    return mean_metric, std_metric
+
+def train_fold_xgb_cb(model_name, train_X, train_y, val_X, val_y, model_params, metric, transform_target=False):
+    fold_train_metric = None
+    model = get_tree_model(model_name, metric, model_params)        
     model.fit(
             train_X, 
             train_y,
@@ -153,9 +176,9 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
                 params=model_params,
                 transform_target=transform_target
             )
-        elif model_name == ModelName.XGBoost:
-            fold_val_metric, fold_model, fold_val_preds = train_fold_xgb(
-                train_X, train_y, val_X, val_y, model_params, metric=metric, transform_target=transform_target
+        elif model_name in [ModelName.XGBoost, ModelName.CatBoost]:
+            fold_val_metric, fold_model, fold_val_preds = train_fold_xgb_cb(
+                model_name, train_X, train_y, val_X, val_y, model_params, metric=metric, transform_target=transform_target
             )
         else:
             model = get_model(model_name, model_params)            
@@ -214,8 +237,3 @@ def get_cv_score(df_val_preds, target_col_name, val_preds_col, metric):
     elif metric == Metrics.RMSLE:
         cv_score = np.sqrt(mean_squared_log_error(y_true_cv, y_pred_cv))
     return cv_score
-
-def get_metric_stats(fold_metrics):
-    mean_metric = np.mean(fold_metrics)
-    std_metric = np.std(fold_metrics)
-    return mean_metric, std_metric
