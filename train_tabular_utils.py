@@ -244,6 +244,19 @@ def get_cv_score(df_val_preds, target_col_name, val_preds_col, metric):
     return cv_score
 
 def get_fold_test_preds(fold_metrics_model, df_test, feature_cols, num_folds):
+    """
+    Generate predictions for each fold on the test dataset.
+
+    Args:
+        fold_metrics_model (list): A list of tuples containing the metrics and models for each fold.
+        df_test (pandas.DataFrame): The test dataset.
+        feature_cols (list): The list of feature column names.
+        num_folds (int): The number of folds.
+
+    Returns:
+        pandas.DataFrame: A dataframe containing the predictions for each fold. The column names are in the format "fold_{fold}_test_preds".
+
+    """
     fold_test_preds_dict = {}
     for fold in range(num_folds):
         model = fold_metrics_model[fold][1]    
@@ -255,6 +268,20 @@ def get_fold_test_preds(fold_metrics_model, df_test, feature_cols, num_folds):
     return df_fold_test_preds
 
 def combine_fold_test_preds(df_fold_test_preds, fold_weights = None):
+    """
+    Combine the predictions from multiple folds into a single prediction.
+
+    Args:
+        df_fold_test_preds (pandas.DataFrame): A DataFrame containing the predictions from multiple folds.
+        fold_weights (list, optional): A list of weights to be applied to each fold. Defaults to None.
+
+    Returns:
+        pandas.Series: A Series containing the combined prediction for each row in the DataFrame.
+
+    Raises:
+        ValueError: If the length of fold_weights does not match the number of columns in df_fold_test_preds.
+
+    """
     if fold_weights is None:
         fold_weights = [1] * len(df_fold_test_preds.columns)
     return df_fold_test_preds.apply(lambda x: np.average(x, weights=fold_weights), axis=1)
