@@ -242,3 +242,19 @@ def get_cv_score(df_val_preds, target_col_name, val_preds_col, metric):
     elif metric == Metrics.RMSLE:
         cv_score = np.sqrt(mean_squared_log_error(y_true_cv, y_pred_cv))
     return cv_score
+
+def get_fold_test_preds(fold_metrics_model, df_test, feature_cols, num_folds):
+    fold_test_preds_dict = {}
+    for fold in range(num_folds):
+        model = fold_metrics_model[fold][1]    
+        test_df = df_test[feature_cols]             
+        fold_test_preds = model.predict(test_df)            
+        pred_col_name = f"fold_{fold}_test_preds"
+        fold_test_preds_dict[pred_col_name] = fold_test_preds 
+    df_fold_test_preds = pd.DataFrame(fold_test_preds_dict)
+    return df_fold_test_preds
+
+def combine_fold_test_preds(df_fold_test_preds, fold_weights = None):
+    if fold_weights is None:
+        fold_weights = [1] * len(df_fold_test_preds.columns)
+    return df_fold_test_preds.apply(lambda x: np.average(x, weights=fold_weights), axis=1)
