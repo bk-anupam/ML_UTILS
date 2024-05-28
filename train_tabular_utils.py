@@ -6,7 +6,7 @@ import lightgbm as lgbm
 import xgboost as xgb
 import catboost
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_log_error, mean_squared_error 
+from sklearn.metrics import mean_absolute_error, mean_squared_log_error, r2_score
 from sklearn.linear_model import Ridge, Lasso, LinearRegression
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from enums import ModelName, Scaler, Metrics
@@ -85,6 +85,8 @@ def get_eval_metric(metric, val_y, val_y_pred):
     fold_train_metric = None
     if metric == Metrics.MAE:
         fold_train_metric = mean_absolute_error(val_y, val_y_pred)
+    elif metric == Metrics.R2:
+        fold_train_metric = r2_score(val_y, val_y_pred)
     elif metric == Metrics.RMSLE:                        
         # we can't use negative predictions for RMSLE
         val_y_pred = [item if item > 0 else 0 for item in val_y_pred]
@@ -227,10 +229,11 @@ def train_model(df, model_name, model_params, feature_col_names, target_col_name
             print(f"saved {fold_model_name}")
     cv = get_cv_score(df_val_preds, target_col_name, val_preds_col, metric)
     mean_metric, std_metric = get_metric_stats(metrics)
-    df_val_preds.to_csv(output_path + f"df_val_preds_{model_name}.csv")
-    print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")
     print(f"{model_name} CV score = {cv}")
     print(f"{model_name} Mean {metric} = {mean_metric}, std = {std_metric}")
+    if persist_model:
+        df_val_preds.to_csv(output_path + f"df_val_preds_{model_name}.csv")
+        print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")    
     return fold_metrics_model
 
 def get_cv_score(df_val_preds, target_col_name, val_preds_col, metric):
@@ -239,6 +242,8 @@ def get_cv_score(df_val_preds, target_col_name, val_preds_col, metric):
     cv_score = None
     if metric == Metrics.MAE:
         cv_score = mean_absolute_error(y_true_cv, y_pred_cv)
+    elif metric == Metrics.R2:
+        cv_score = r2_score(y_true_cv, y_pred_cv)
     elif metric == Metrics.RMSLE:
         cv_score = np.sqrt(mean_squared_log_error(y_true_cv, y_pred_cv))
     return cv_score
