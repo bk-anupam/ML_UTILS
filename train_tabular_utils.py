@@ -133,8 +133,7 @@ def train_fold_xgb_cb(model_name, train_X, train_y, val_X, val_y, model_params, 
         verbose = model_params["verbosity"]
     model.fit(
             train_X, 
-            train_y,
-            #eval_metric=metric,
+            train_y,            
             eval_set=[(train_X, train_y), (val_X, val_y)],                        
             verbose=verbose
         )
@@ -193,9 +192,10 @@ def run_training(model_name, df_train, target_col_name, feature_col_names=None,
             fold_val_metric, fold_model, fold_val_preds = train_fold(train_X, train_y, val_X, val_y, model, metric=metric)
 
         if not suppress_print:
-            print(f"Fold {fold} - {model_name} - {metric} : {fold_val_metric}")
-        df_val_fold[val_preds_col] = fold_val_preds
-        df_val_preds = pd.concat([df_val_preds, df_val_fold], axis=0)
+            print(f"Fold {fold} - {model_name} - {metric} : {fold_val_metric}")        
+        df_fold_val_preds = df_val_fold[['kfold', target_col_name]]
+        df_fold_val_preds[val_preds_col] = fold_val_preds
+        df_val_preds = pd.concat([df_val_preds, df_fold_val_preds], axis=0)
         fold_metrics_model.append((fold_val_metric, fold_model))
         if single_fold:
             break
@@ -228,26 +228,16 @@ def train_model(df, model_name, model_params, feature_col_names, target_col_name
             fold_model_name = output_path + f"{model_name}_{index}.joblib"        
             dump(model, fold_model_name)
             print(f"saved {fold_model_name}")
-    cv = get_cv_score(df_val_preds, target_col_name, val_preds_col, metric)
-    mean_metric, std_metric = get_metric_stats(metrics)
+    if single_fold:
+        print(f"{model_name} CV score = {metrics[0]}")
+        return fold_metrics_model
+    cv = get_eval_metric(metric, df_val_preds[target_col_name], df_val_preds[val_preds_col] )
     print(f"{model_name} CV score = {cv}")
-    print(f"{model_name} Mean {metric} = {mean_metric}, std = {std_metric}")
-    if persist_model:
-        df_val_preds.to_csv(output_path + f"df_val_preds_{model_name}.csv")
-        print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")    
+    mean_metric, std_metric = get_metric_stats(metrics)    
+    print(f"{model_name} Mean {metric} = {mean_metric}, std = {std_metric}")    
+    df_val_preds.to_csv(output_path + f"df_val_preds_{model_name}.csv")
+    print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")    
     return fold_metrics_model
-
-def get_cv_score(df_val_preds, target_col_name, val_preds_col, metric):
-    y_true_cv = df_val_preds[target_col_name]
-    y_pred_cv = df_val_preds[val_preds_col]
-    cv_score = None
-    if metric == Metrics.MAE:
-        cv_score = mean_absolute_error(y_true_cv, y_pred_cv)
-    elif metric == Metrics.R2:
-        cv_score = r2_score(y_true_cv, y_pred_cv)
-    elif metric == Metrics.RMSLE:
-        cv_score = np.sqrt(mean_squared_log_error(y_true_cv, y_pred_cv))
-    return cv_score
 
 def get_fold_test_preds(fold_metrics_model, df_test, feature_cols, num_folds):
     """
