@@ -1,6 +1,3 @@
-# %% [code]
-# %% [code]
-# %% [code]
 import numpy as np
 import pandas as pd
 import statistics
@@ -17,13 +14,37 @@ from sklearn import model_selection
 from joblib import dump
 from functools import partial
 
+def get_metric_type(metric):
+    if metric in [Metrics.MAE, Metrics.RMSLE, Metrics.MSE, Metrics.R2]:
+        metric_type = "regression"
+    else:
+        metric_type = "classification"
+    return metric_type
+
 def get_fold_df(df, fold):
     df_fold_val = df[df.kfold == fold].reset_index(drop=True)
     df_fold_train = df[df.kfold != fold].reset_index(drop=True)
     return df_fold_train, df_fold_val    
 
-def get_model(model_name, params, random_state=42):
+def get_tree_model(model_name, metric_type, model_params):    
     model = None
+    if model_name == ModelName.XGBoost and metric_type == "regression":    
+        model = xgb.XGBRegressor(**model_params)
+    elif model_name == ModelName.XGBoost and metric_type == "classification":
+        model = xgb.XGBClassifier(**model_params)
+    elif model_name == ModelName.CatBoost and metric_type == "regression":
+        model = catboost.CatBoostRegressor(**model_params)
+    elif model_name == ModelName.CatBoost and metric_type == "classification":
+        model = catboost.CatBoostClassifier(**model_params)
+    elif model_name == ModelName.LGBM and metric_type == "regression":
+        model = lgbm.LGBMRegressor(**model_params)
+    elif model_name == ModelName.LGBM and metric_type == "classification":
+        model = lgbm.LGBMClassifier(**model_params)
+    return model
+
+def get_model(model_name, params, metric, random_state=42):
+    model = None
+    metric_type = get_metric_type(metric)
     if model_name in [ModelName.Ridge, ModelName.L2_Ridge]:
         if params is not None:
             model = Ridge(alpha = params["alpha"], random_state=random_state)
@@ -36,28 +57,12 @@ def get_model(model_name, params, random_state=42):
             model = Lasso()
     elif model_name == ModelName.LinearRegression:
         model = LinearRegression()
-    elif model_name == ModelName.RandomForest:
-        model = RandomForestRegressor(
-                n_estimators=params["n_estimators"],                 
-                max_depth=params["max_depth"],
-                min_samples_leaf=params["min_samples_leaf"],
-                min_samples_split=params["min_samples_split"],
-                max_features=params["max_features"],
-                random_state=random_state,
-                n_jobs=-1
-            )
-    elif model_name == ModelName.GradientBoostingRegressor:
-        model = GradientBoostingRegressor(                
-                n_estimators=params["n_estimators"],                 
-                max_depth=params["max_depth"],
-                min_samples_leaf=params["min_samples_leaf"],                
-                min_samples_split=params["min_samples_split"],                
-                max_features=params["max_features"],                                
-                subsample=params["subsample"],
-                learning_rate=params["learning_rate"],
-                random_state=random_state,                
-                verbose=params["verbose"],
-                n_iter_no_change=params["n_iter_no_change"])   
+    elif model_name == ModelName.RandomForest and metric_type == "regression":
+        model = RandomForestRegressor(**params)
+    elif model_name == ModelName.GradientBoostingRegressor and metric_type == "regression":
+        model = GradientBoostingRegressor(**params)
+    else:
+        model = get_tree_model(model_name, metric_type, model_params=params)   
     return model                
 
 def get_train_val_nparray(df_train_fold, df_val_fold, feature_col_names, target_col_name):
@@ -103,23 +108,6 @@ def train_fold(train_X, train_y, val_X, val_y, model, metric=Metrics.MAE):
     fold_train_metric = get_eval_metric(metric, val_y, val_y_pred)
     return fold_train_metric, model, val_y_pred
 
-def get_tree_model(model_name, metric, model_params):
-    metric_type = None
-    model = None
-    if metric in [Metrics.MAE, Metrics.RMSLE, Metrics.MSE, Metrics.R2]:
-        metric_type = "regression"
-    else:
-        metric_type = "classification"
-    if model_name == ModelName.XGBoost and metric_type == "regression":    
-        model = xgb.XGBRegressor(**model_params)
-    elif model_name == ModelName.XGBoost and metric_type == "classification":
-        model = xgb.XGBClassifier(**model_params)
-    elif model_name == ModelName.CatBoost and metric_type == "regression":
-        model = catboost.CatBoostRegressor(**model_params)
-    elif model_name == ModelName.CatBoost and metric_type == "classification":
-        model = catboost.CatBoostClassifier(**model_params)
-    return model
-
 def get_metric_stats(fold_metrics):
     mean_metric = np.mean(fold_metrics)
     std_metric = np.std(fold_metrics)
@@ -127,7 +115,8 @@ def get_metric_stats(fold_metrics):
 
 def train_fold_xgb_cb(model_name, train_X, train_y, val_X, val_y, model_params, metric, transform_target=False):
     fold_train_metric = None
-    model = get_tree_model(model_name, metric, model_params) 
+    metric_type = get_metric_type(metric)
+    model = get_tree_model(model_name, metric_type, model_params) 
     verbose = None
     if model_name == ModelName.CatBoost:       
         verbose = model_params["verbose"]
