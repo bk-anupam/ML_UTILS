@@ -243,7 +243,13 @@ def train_and_validate(model_name, model_params, preprocessor, df, feature_cols,
         if preprocessor is not None:
             train_X = preprocessor.fit_transform(train_X)
             val_X = preprocessor.transform(val_X)
-        if model_name in [ModelName.XGBoost, ModelName.LGBM, ModelName.CatBoost]:
+        if model_name in [ModelName.XGBoost, ModelName.CatBoost]:
+            if model_name == ModelName.CatBoost:       
+                verbose = model_params["verbose"]
+            elif model_name == ModelName.XGBoost:
+                verbose = model_params["verbosity"]
+            fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)], verbose=verbose)
+        elif model_name == ModelName.LGBM:
             fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
         else:
             fold_model.fit(train_X, train_y)
