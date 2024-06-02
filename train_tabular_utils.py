@@ -230,7 +230,51 @@ def train_model(df, model_name, model_params, feature_col_names, target_col_name
     print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")    
     return fold_metrics_model
 
-def get_fold_test_preds(fold_metrics_model, df_test, feature_cols, num_folds):
+def train_and_validate(model_name, model_params, preprocessor, df, feature_cols, 
+                       target_col_name, metric, n_repeat=1, single_fold=False, num_folds=5):    
+    df_oof_preds = pd.DataFrame()
+    fold_metrics_model = []
+    for fold in range(num_folds):
+        fold_model = get_model(model_name=model_name, params=model_params, metric=metric)
+        df_train_fold, df_val_fold = get_fold_df(df, fold)
+        train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_cols, target_col_name)
+        if preprocessor is not None:
+            train_X = preprocessor.fit_transform(train_X)
+            val_X = preprocessor.transform(val_X)
+        if model_name in [ModelName.XGBoost, ModelName.LGBM, ModelName.CatBoost]:
+            fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
+        else:
+            fold_model.fit(train_X, train_y)
+        val_y_pred = fold_model.predict(val_X)
+        fold_val_metric = get_eval_metric(metric, val_y, val_y_pred)        
+        df_fold_val_preds = df_val_fold[['kfold', target_col_name]]
+        df_fold_val_preds['oof_preds'] = val_y_pred
+        df_oof_preds = pd.concat([df_oof_preds, df_fold_val_preds], axis=0)
+        fold_metrics_model.append((fold_val_metric, fold_model))
+        if single_fold:
+            break
+    return fold_metrics_model, df_oof_preds, preprocessor
+
+def get_cv_score(fold_metrics_model, model_name, metric, df_oof_preds, target_col_name):
+    metrics = [item[0] for item in fold_metrics_model]
+    for fold, fold_metric in enumerate(metrics):
+        print(f"Fold {fold} - {model_name} - {metric} : {fold_metric}")
+    cv = get_eval_metric(metric, df_oof_preds[target_col_name], df_oof_preds['oof_preds'] )
+    print(f"{model_name} metric={metric} CV score = {cv}")    
+    mean_metric, std_metric = get_metric_stats(metrics)    
+    print(f"{model_name} Mean {metric} = {mean_metric}, std = {std_metric}")
+
+def persist(model_name, fold_metrics_model, df_oof_preds, persist_model=False, output_path=""):    
+    fold_models = [item[1] for item in fold_metrics_model]    
+    if persist_model:
+        for index, model in enumerate(fold_models):
+            fold_model_name = output_path + f"{model_name}_{index}.joblib"        
+            dump(model, fold_model_name)
+            print(f"saved {fold_model_name}")    
+    df_oof_preds.to_csv(output_path + f"df_val_preds_{model_name}.csv")
+    print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")  
+
+def get_fold_test_preds(fold_metrics_model, test_X, num_folds):
     """
     Generate predictions for each fold on the test dataset.
 
@@ -246,9 +290,8 @@ def get_fold_test_preds(fold_metrics_model, df_test, feature_cols, num_folds):
     """
     fold_test_preds_dict = {}
     for fold in range(num_folds):
-        model = fold_metrics_model[fold][1]    
-        test_df = df_test[feature_cols]             
-        fold_test_preds = model.predict(test_df)            
+        model = fold_metrics_model[fold][1]            
+        fold_test_preds = model.predict(test_X)            
         pred_col_name = f"fold_{fold}_test_preds"
         fold_test_preds_dict[pred_col_name] = fold_test_preds 
     df_fold_test_preds = pd.DataFrame(fold_test_preds_dict)
@@ -272,3 +315,16 @@ def combine_fold_test_preds(df_fold_test_preds, fold_weights = None):
     if fold_weights is None:
         fold_weights = [1] * len(df_fold_test_preds.columns)
     return df_fold_test_preds.apply(lambda x: np.average(x, weights=fold_weights), axis=1)
+
+def get_test_preds(fold_metrics_model, df_test, feature_cols, preprocessor=None, num_folds=5):
+    # For each fold, get the test predictions using corresponding fold model
+    test_X = df_test.loc[:, feature_cols]
+    if preprocessor is not None:
+        test_X = preprocessor.transform(test_X)
+    df_fold_test_preds = get_fold_test_preds(fold_metrics_model, test_X=test_X, num_folds = num_folds)
+    fold_metrics = [item[0] for item in fold_metrics_model]
+    # normalize the fold weights
+    fold_weights = fold_metrics / np.sum(fold_metrics)
+    # Combine fold predictions using simple averaging    
+    df_fold_test_preds["test_preds"] = combine_fold_test_preds(df_fold_test_preds, fold_weights=None)
+    return df_fold_test_preds    
