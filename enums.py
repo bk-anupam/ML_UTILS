@@ -1,4 +1,5 @@
-class ModelName:    
+class ModelName:   
+    LogisticRegression = "LogisticRegression" 
     Ridge = "Ridge"
     L2_Ridge = "L2_Ridge"
     Lasso = "Lasso"
@@ -22,3 +23,4 @@ class Metrics:
     RMSLE = "RMSLE"
     AUC = "AUC"
     F1 = "F1"
+    ACCURACY = "ACCURACY"
