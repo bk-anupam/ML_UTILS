@@ -1,5 +1,3 @@
-# %% [code]
-# %% [code]
 import numpy as np
 import pandas as pd
 import statistics
@@ -8,9 +6,9 @@ import lightgbm as lgbm
 import xgboost as xgb
 import catboost
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_log_error, r2_score
-from sklearn.linear_model import Ridge, Lasso, LinearRegression
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_log_error, r2_score, accuracy_score
+from sklearn.linear_model import LogisticRegression, Ridge, Lasso, LinearRegression
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, RandomForestClassifier
 from enums import ModelName, Scaler, Metrics
 from sklearn import model_selection
 from joblib import dump
@@ -57,10 +55,14 @@ def get_model(model_name, params, metric, random_state=42):
             model = Lasso(alpha = params["alpha"])
         else:
             model = Lasso()
+    elif model_name == ModelName.LogisticRegression:
+        model = LogisticRegression()
     elif model_name == ModelName.LinearRegression:
         model = LinearRegression()
     elif model_name == ModelName.RandomForest and metric_type == "regression":
         model = RandomForestRegressor(**params)
+    elif model_name == ModelName.RandomForest and metric_type == "classification":
+        model = RandomForestClassifier(**params)
     elif model_name == ModelName.GradientBoostingRegressor and metric_type == "regression":
         model = GradientBoostingRegressor(**params)
     else:
@@ -95,6 +97,8 @@ def get_eval_metric(metric, val_y, val_y_pred):
     fold_train_metric = None
     if metric == Metrics.MAE:
         fold_train_metric = mean_absolute_error(val_y, val_y_pred)
+    elif metric == Metrics.ACCURACY:
+        fold_train_metric = accuracy_score(val_y, val_y_pred)
     elif metric == Metrics.R2:
         fold_train_metric = r2_score(val_y, val_y_pred)
     elif metric == Metrics.RMSLE:                        
@@ -233,7 +237,7 @@ def train_model(df, model_name, model_params, feature_col_names, target_col_name
     return fold_metrics_model
 
 def train_and_validate(model_name, model_params, preprocessor, df, feature_cols, 
-                       target_col_name, metric, n_repeat=1, single_fold=False, num_folds=5):    
+                       target_col_name, metric, n_repeat=1, single_fold=False, num_folds=5, suppress_print=False):    
     df_oof_preds = pd.DataFrame()
     fold_metrics_model = []
     for fold in range(num_folds):
@@ -254,13 +258,21 @@ def train_and_validate(model_name, model_params, preprocessor, df, feature_cols,
         else:
             fold_model.fit(train_X, train_y)
         val_y_pred = fold_model.predict(val_X)
-        fold_val_metric = get_eval_metric(metric, val_y, val_y_pred)        
+        fold_val_metric = get_eval_metric(metric, val_y, val_y_pred)
+        if not suppress_print:        
+            print(f"Fold {fold} - {model_name} - {metric} : {fold_val_metric}")
         df_fold_val_preds = df_val_fold[['kfold', target_col_name]]
         df_fold_val_preds['oof_preds'] = val_y_pred
         df_oof_preds = pd.concat([df_oof_preds, df_fold_val_preds], axis=0)
         fold_metrics_model.append((fold_val_metric, fold_model))
         if single_fold:
             break
+    cv = get_eval_metric(metric, df_oof_preds[target_col_name], df_oof_preds['oof_preds'] )
+    metrics = [item[0] for item in fold_metrics_model]
+    mean_metric, std_metric = get_metric_stats(metrics)
+    if not suppress_print:    
+        print(f"{model_name} metric={metric} CV score = {cv}")            
+        print(f"{model_name} Mean {metric} = {mean_metric}, std = {std_metric}")
     return fold_metrics_model, df_oof_preds, preprocessor
 
 def get_cv_score(fold_metrics_model, model_name, metric, df_oof_preds, target_col_name):
