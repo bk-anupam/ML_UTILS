@@ -246,9 +246,9 @@ def train_and_validate(model_name, model_params, preprocessor, df, feature_cols,
         train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_cols, target_col_name)
         if preprocessor is not None:
             train_X = preprocessor.fit_transform(train_X)
-            print(f"train_X shape: {train_X.shape}")
+            #print(f"train_X shape: {train_X.shape}")
             val_X = preprocessor.transform(val_X)
-            print(f"val_X shape: {val_X.shape}")
+            #print(f"val_X shape: {val_X.shape}")
         if model_name in [ModelName.XGBoost, ModelName.CatBoost]:
             if model_name == ModelName.CatBoost:       
                 verbose = model_params["verbose"]
@@ -259,7 +259,7 @@ def train_and_validate(model_name, model_params, preprocessor, df, feature_cols,
             fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
         else:
             fold_model.fit(train_X, train_y)
-        print(f"parameter count for logreg = {len(fold_model.coef_[0])}")
+        #print(f"parameter count for logreg = {len(fold_model.coef_[0])}")
         val_y_pred = fold_model.predict(val_X)
         fold_val_metric = get_eval_metric(metric, val_y, val_y_pred)
         if not suppress_print:        
