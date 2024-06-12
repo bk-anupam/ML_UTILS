@@ -127,3 +127,22 @@ def plot_feature_target_corr(df, feature_cols, target_col):
     ax.set_xlabel(f"{target_col} correlation")
     ax.set_ylabel("Features")
     ax = sns.barplot(x=values, y=labels, ax=ax)    
+
+# df_feature_imp is a dataframe with two columns f_name and f_imp
+def plot_feature_importance(df_feature_imp, fig_size=(18, 6)):
+    # Set the figure size
+    plt.figure(figsize=(18, 6))
+    # Create the bar plot
+    sns.barplot(x="f_name", y="f_imp", data=df_feature_imp)
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=90)
+    # Add feature importance values on top of each bar (adjusted positioning)
+    for bar in plt.gca().containers[0]:
+      plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.0, round(bar.get_height(), 3), 
+           ha='center', va='center', rotation=90)  # Adjust vertical offset
+    # Customize plot title and labels (optional)
+    plt.title("Feature Importance")
+    plt.xlabel("Feature Name")
+    plt.ylabel("Feature Importance")
+    # Show the plot
+    plt.show()
