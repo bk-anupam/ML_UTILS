@@ -6,7 +6,7 @@ import lightgbm as lgbm
 import xgboost as xgb
 import catboost
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_log_error, r2_score, accuracy_score
+from sklearn.metrics import mean_absolute_error, mean_squared_log_error, r2_score, accuracy_score, roc_auc_score, f1_score
 from sklearn.linear_model import LogisticRegression, Ridge, Lasso, LinearRegression
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, RandomForestClassifier
 from enums import ModelName, Scaler, Metrics
@@ -97,8 +97,12 @@ def get_eval_metric(metric, val_y, val_y_pred):
     fold_train_metric = None
     if metric == Metrics.MAE:
         fold_train_metric = mean_absolute_error(val_y, val_y_pred)
-    elif metric == Metrics.ACCURACY:
+    elif metric == Metrics.ACCURACY:        
         fold_train_metric = accuracy_score(val_y, val_y_pred)
+    elif metric ==  Metrics.AUC:
+        fold_train_metric = roc_auc_score(val_y, val_y_pred)
+    elif metric == Metrics.F1:        
+        fold_train_metric = f1_score(val_y, val_y_pred)    
     elif metric == Metrics.R2:
         fold_train_metric = r2_score(val_y, val_y_pred)
     elif metric == Metrics.RMSLE:                        
@@ -236,36 +240,55 @@ def train_model(df, model_name, model_params, feature_col_names, target_col_name
     print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")    
     return fold_metrics_model
 
+def fit_fold_model(model_name, model_params, fold_model, train_X, train_y, val_X, val_y):    
+    if model_name in [ModelName.XGBoost, ModelName.CatBoost]:
+        if model_name == ModelName.CatBoost:       
+            verbose = model_params["verbose"]
+        elif model_name == ModelName.XGBoost:
+            verbose = model_params["verbosity"]
+        fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)], verbose=verbose)
+    elif model_name == ModelName.LGBM:
+        fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
+    else:
+        fold_model.fit(train_X, train_y)
+
+def get_fold_val_preds(model, val_X, val_y, metric, df_fold_val_preds, num_classes=None):
+    metric_type = get_metric_type(metric)
+    if metric_type == "regression":
+        val_preds = model.predict(val_X)
+        df_fold_val_preds['oof_preds'] = val_preds
+        fold_val_metric = get_eval_metric(metric, val_y, val_preds)
+    else:
+        val_preds_proba = model.predict_proba(val_X)
+        if metric in [Metrics.F1, Metrics.ACCURACY]:
+            val_preds = val_preds_proba.argmax(axis=1)
+            fold_val_metric = get_eval_metric(metric, val_y, val_preds)
+            df_fold_val_preds['oof_preds'] = val_preds
+        elif metric == Metrics.AUC:
+            fold_val_metric = get_eval_metric(metric, val_y, val_preds_proba)
+        if num_classes is not None:
+            for i in range(num_classes):
+                df_fold_val_preds[f"oof_preds_proba_{i}"] = val_preds_proba[:,i]
+    return fold_val_metric, df_fold_val_preds
+
 def train_and_validate(model_name, model_params, preprocessor, df, feature_cols, 
-                       target_col_name, metric, n_repeat=1, single_fold=False, num_folds=5, suppress_print=False):    
+                       target_col_name, metric, n_repeat=1, single_fold=False, 
+                       num_folds=5, suppress_print=False, num_classes=None):    
     df_oof_preds = pd.DataFrame()
-    fold_metrics_model = []
+    fold_metrics_model = []    
     for fold in range(num_folds):
         fold_model = get_model(model_name=model_name, params=model_params, metric=metric)
         df_train_fold, df_val_fold = get_fold_df(df, fold)
         train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_cols, target_col_name)
         if preprocessor is not None:
             train_X = preprocessor.fit_transform(train_X)
-            #print(f"train_X shape: {train_X.shape}")
             val_X = preprocessor.transform(val_X)
-            #print(f"val_X shape: {val_X.shape}")
-        if model_name in [ModelName.XGBoost, ModelName.CatBoost]:
-            if model_name == ModelName.CatBoost:       
-                verbose = model_params["verbose"]
-            elif model_name == ModelName.XGBoost:
-                verbose = model_params["verbosity"]
-            fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)], verbose=verbose)
-        elif model_name == ModelName.LGBM:
-            fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
-        else:
-            fold_model.fit(train_X, train_y)
-        #print(f"parameter count for logreg = {len(fold_model.coef_[0])}")
-        val_y_pred = fold_model.predict(val_X)
-        fold_val_metric = get_eval_metric(metric, val_y, val_y_pred)
-        if not suppress_print:        
-            print(f"Fold {fold} - {model_name} - {metric} : {fold_val_metric}")
+        fit_fold_model(model_name, model_params, fold_model, train_X, train_y, val_X, val_y)
         df_fold_val_preds = df_val_fold[['kfold', target_col_name]]
-        df_fold_val_preds['oof_preds'] = val_y_pred
+        fold_val_metric, df_fold_val_preds = get_fold_val_preds(fold_model, val_X, val_y, metric, 
+                                                                df_fold_val_preds, num_classes=num_classes)
+        if not suppress_print:        
+            print(f"Fold {fold} - {model_name} - {metric} : {fold_val_metric}")                
         df_oof_preds = pd.concat([df_oof_preds, df_fold_val_preds], axis=0)
         fold_metrics_model.append((fold_val_metric, fold_model))
         if single_fold:
@@ -276,7 +299,7 @@ def train_and_validate(model_name, model_params, preprocessor, df, feature_cols,
     if not suppress_print:    
         print(f"{model_name} metric={metric} CV score = {cv}")            
         print(f"{model_name} Mean {metric} = {mean_metric}, std = {std_metric}")
-    return fold_metrics_model, df_oof_preds, preprocessor
+    return fold_metrics_model, df_oof_preds, preprocessor    
 
 def get_cv_score(fold_metrics_model, model_name, metric, df_oof_preds, target_col_name):
     metrics = [item[0] for item in fold_metrics_model]
@@ -357,15 +380,16 @@ def get_test_preds_clf(fold_metrics_model, df_test, feature_cols, preprocessor=N
     if preprocessor is not None:
         test_X = preprocessor.transform(test_X)
     print(f"test_X shape: {test_X.shape}")
-    test_preds = []
+    test_preds_proba = []
     for fold in range(num_folds):
         model = fold_metrics_model[fold][1]
         fold_test_preds_proba = model.predict_proba(test_X)
-        test_preds.append(fold_test_preds_proba)
+        test_preds_proba.append(fold_test_preds_proba)
     fold_metrics = [item[0] for item in fold_metrics_model]
     # normalize the fold weights
     fold_weights = fold_metrics / np.sum(fold_metrics)
-    combined_test_preds = np.average(test_preds, axis=0, weights=fold_weights)
-    print(f"combined_test_preds shape: {combined_test_preds.shape}")
-    test_preds_final = np.argmax(combined_test_preds, axis=1)
-    return test_preds_final
+    test_preds_proba = np.average(test_preds_proba, axis=0, weights=fold_weights)
+    print(f"test_preds_proba shape: {test_preds_proba.shape}")
+    test_preds = np.argmax(test_preds_proba, axis=1)
+    print(f"test_preds shape: {test_preds.shape}")
+    return test_preds_proba, test_preds
