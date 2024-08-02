@@ -56,7 +56,10 @@ def get_model(model_name, params, metric, random_state=42):
         else:
             model = Lasso()
     elif model_name == ModelName.LogisticRegression:
-        model = LogisticRegression()
+        if params is not None:
+            model = LogisticRegression(**params)
+        else:
+            model = LogisticRegression()
     elif model_name == ModelName.LinearRegression:
         model = LinearRegression()
     elif model_name == ModelName.RandomForest and metric_type == "regression":
@@ -265,11 +268,27 @@ def get_fold_val_preds(model, val_X, val_y, metric, df_fold_val_preds, num_class
             fold_val_metric = get_eval_metric(metric, val_y, val_preds)
             df_fold_val_preds['oof_preds'] = val_preds
         elif metric == Metrics.AUC:
-            fold_val_metric = get_eval_metric(metric, val_y, val_preds_proba)
+            # for binary classification case            
+            fold_val_metric = get_eval_metric(metric, val_y, val_preds_proba[:,1])
+            df_fold_val_preds['oof_preds'] = val_preds_proba[:,1]            
         if num_classes is not None:
             for i in range(num_classes):
                 df_fold_val_preds[f"oof_preds_proba_{i}"] = val_preds_proba[:,i]
     return fold_val_metric, df_fold_val_preds
+
+def train_validate_fold(fold, model_name, model_params, preprocessor, df, feature_cols, 
+                        metric, target_col_name, num_classes=None):
+    fold_model = get_model(model_name=model_name, params=model_params, metric=metric)
+    df_train_fold, df_val_fold = get_fold_df(df, fold)
+    train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_cols, target_col_name)
+    if preprocessor is not None:
+        train_X = preprocessor.fit_transform(train_X)
+        val_X = preprocessor.transform(val_X)
+    fit_fold_model(model_name, model_params, fold_model, train_X, train_y, val_X, val_y)
+    df_fold_val_preds = df_val_fold[['kfold', target_col_name]]
+    fold_val_metric, df_fold_val_preds = get_fold_val_preds(fold_model, val_X, val_y, metric, 
+                                                            df_fold_val_preds, num_classes=num_classes)
+    return fold_val_metric
 
 def train_and_validate(model_name, model_params, preprocessor, df, feature_cols, 
                        target_col_name, metric, n_repeat=1, single_fold=False, 
