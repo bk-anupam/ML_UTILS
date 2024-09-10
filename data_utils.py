@@ -6,7 +6,7 @@ from sklearn.preprocessing import PowerTransformer
 
 def get_null_stats(df):
     null_count = df.isnull().sum()
-    col_null_counts = {col: null_cnt for col, null_cnt in null_count.iteritems() if null_cnt > 0}
+    col_null_counts = {col: null_cnt for col, null_cnt in null_count.items() if null_cnt > 0}
     if len(col_null_counts) == 0:
         print(f"There are no columns with null values")
     else:
