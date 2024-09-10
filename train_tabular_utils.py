@@ -7,6 +7,7 @@ import xgboost as xgb
 import catboost
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_log_error, r2_score, accuracy_score, roc_auc_score, f1_score
+from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import LogisticRegression, Ridge, Lasso, LinearRegression
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, RandomForestClassifier
 from enums import ModelName, Scaler, Metrics
@@ -15,7 +16,7 @@ from joblib import dump
 from functools import partial
 
 def get_metric_type(metric):
-    if metric in [Metrics.MAE, Metrics.RMSLE, Metrics.MSE, Metrics.R2]:
+    if metric in [Metrics.MAE, Metrics.RMSLE, Metrics.MSE, Metrics.R2, Metrics.RMSE]:
         metric_type = "regression"
     else:
         metric_type = "classification"
@@ -26,14 +27,17 @@ def get_fold_df(df, fold):
     df_fold_train = df[df.kfold != fold].reset_index(drop=True)
     return df_fold_train, df_fold_val    
 
-def get_tree_model(model_name, metric_type, model_params):    
+def get_tree_model(model_name, metric_type, model_params, cat_features=None):    
     model = None
     if model_name == ModelName.XGBoost and metric_type == "regression":    
         model = xgb.XGBRegressor(**model_params)
     elif model_name == ModelName.XGBoost and metric_type == "classification":
         model = xgb.XGBClassifier(**model_params)
     elif model_name == ModelName.CatBoost and metric_type == "regression":
-        model = catboost.CatBoostRegressor(**model_params)
+        if cat_features is not None:
+            model = catboost.CatBoostRegressor(**model_params, cat_features=cat_features)
+        else:
+            model = catboost.CatBoostRegressor(**model_params)
     elif model_name == ModelName.CatBoost and metric_type == "classification":
         model = catboost.CatBoostClassifier(**model_params)
     elif model_name == ModelName.LGBM and metric_type == "regression":
@@ -42,7 +46,7 @@ def get_tree_model(model_name, metric_type, model_params):
         model = lgbm.LGBMClassifier(**model_params)
     return model
 
-def get_model(model_name, params, metric, random_state=42):
+def get_model(model_name, params, metric, random_state=42, cat_features=None):
     model = None
     metric_type = get_metric_type(metric)
     if model_name in [ModelName.Ridge, ModelName.L2_Ridge]:
@@ -69,7 +73,7 @@ def get_model(model_name, params, metric, random_state=42):
     elif model_name == ModelName.GradientBoostingRegressor and metric_type == "regression":
         model = GradientBoostingRegressor(**params)
     else:
-        model = get_tree_model(model_name, metric_type, model_params=params)   
+        model = get_tree_model(model_name, metric_type, model_params=params, cat_features=cat_features)   
     return model                
 
 def get_train_val_nparray(df_train_fold, df_val_fold, feature_col_names, target_col_name):
@@ -100,6 +104,8 @@ def get_eval_metric(metric, val_y, val_y_pred):
     fold_train_metric = None
     if metric == Metrics.MAE:
         fold_train_metric = mean_absolute_error(val_y, val_y_pred)
+    elif metric == Metrics.RMSE:
+        fold_train_metric = np.sqrt(mean_squared_error(val_y, val_y_pred))
     elif metric == Metrics.ACCURACY:        
         fold_train_metric = accuracy_score(val_y, val_y_pred)
     elif metric ==  Metrics.AUC:
@@ -164,96 +170,19 @@ def train_fold_lgbm(train_df, train_y, val_df, val_y, feature_col_names, metric,
         val_preds = np.expm1(val_preds)
     fold_train_metric = get_eval_metric(metric, val_y, val_preds)
     return fold_train_metric, model, val_preds    
-
-def run_training(model_name, df_train, target_col_name, feature_col_names=None, 
-                 metric=Metrics.MAE, num_folds=5, single_fold=False, model_params=None, 
-                 val_preds_col="val_preds", suppress_print=False, transform_target=False):
-    fold_metrics_model = []
-    df_val_preds = pd.DataFrame()    
-    for fold in range(num_folds):
-        df_train_fold, df_val_fold = get_fold_df(df_train, fold)        
-        train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_col_names, target_col_name)        
-        # To train on RMSLE objective instead of RMSE we need to transform the target values
-        if metric == Metrics.RMSLE and transform_target:            
-            train_y = np.log1p(train_y)            
-        if model_name == ModelName.LGBM:            
-            fold_val_metric, fold_model, fold_val_preds = train_fold_lgbm(
-                train_df=df_train_fold, 
-                train_y=train_y, 
-                val_df=df_val_fold, 
-                val_y=val_y, 
-                feature_col_names=feature_col_names,
-                metric=metric,
-                params=model_params,
-                transform_target=transform_target
-            )
-        elif model_name in [ModelName.XGBoost, ModelName.CatBoost]:
-            fold_val_metric, fold_model, fold_val_preds = train_fold_xgb_cb(
-                model_name, train_X, train_y, val_X, val_y, model_params, metric=metric, transform_target=transform_target
-            )
-        else:
-            model = get_model(model_name, model_params)            
-            fold_val_metric, fold_model, fold_val_preds = train_fold(train_X, train_y, val_X, val_y, model, metric=metric)
-
-        if not suppress_print:
-            print(f"Fold {fold} - {model_name} - {metric} : {fold_val_metric}")        
-        df_fold_val_preds = df_val_fold[['kfold', target_col_name]]
-        df_fold_val_preds[val_preds_col] = fold_val_preds
-        df_val_preds = pd.concat([df_val_preds, df_fold_val_preds], axis=0)
-        fold_metrics_model.append((fold_val_metric, fold_model))
-        if single_fold:
-            break
-    return fold_metrics_model, df_val_preds
     
-def train_model(df, model_name, model_params, feature_col_names, target_col_name, 
-                metric=Metrics.MAE, num_folds=5, single_fold=False, persist_model=False,
-                output_path="", transform_target=False):
-    val_preds_col = "val_preds"
-    print(f"training {model_name}")
-    if model_name == ModelName.L2_Ridge:
-        val_preds_col = "l2_val_preds"
-
-    fold_metrics_model, df_val_preds = run_training(
-            model_name=model_name,
-            df_train=df,
-            target_col_name=target_col_name,
-            feature_col_names=feature_col_names,
-            metric=metric,            
-            num_folds=num_folds,
-            model_params=model_params,
-            val_preds_col=val_preds_col,
-            single_fold=single_fold,
-            transform_target=transform_target
-        )        
-    metrics = [item[0] for item in fold_metrics_model]
-    fold_models = [item[1] for item in fold_metrics_model]    
-    if persist_model:
-        for index, model in enumerate(fold_models):
-            fold_model_name = output_path + f"{model_name}_{index}.joblib"        
-            dump(model, fold_model_name)
-            print(f"saved {fold_model_name}")
-    if single_fold:
-        print(f"{model_name} CV score = {metrics[0]}")
-        return fold_metrics_model
-    cv = get_eval_metric(metric, df_val_preds[target_col_name], df_val_preds[val_preds_col] )
-    print(f"{model_name} CV score = {cv}")
-    mean_metric, std_metric = get_metric_stats(metrics)    
-    print(f"{model_name} Mean {metric} = {mean_metric}, std = {std_metric}")    
-    df_val_preds.to_csv(output_path + f"df_val_preds_{model_name}.csv")
-    print(f"Saved validation data predictions to df_val_preds_{model_name}.csv")    
-    return fold_metrics_model
-
-def fit_fold_model(model_name, model_params, fold_model, train_X, train_y, val_X, val_y):    
-    if model_name in [ModelName.XGBoost, ModelName.CatBoost]:
-        if model_name == ModelName.CatBoost:       
-            verbose = model_params["verbose"]
-        elif model_name == ModelName.XGBoost:
-            verbose = model_params["verbosity"]
+def fit_fold_model(model_name, model_params, fold_model, train_X, train_y, val_X, val_y, cat_features=None):    
+    if model_name == ModelName.CatBoost:       
+        verbose = model_params["verbose"]
+        fold_model.fit(X=train_X, y=train_y, eval_set=[(val_X, val_y)], verbose=verbose, cat_features=cat_features)
+    elif model_name == ModelName.XGBoost:
+        verbose = model_params["verbosity"]
         fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)], verbose=verbose)
     elif model_name == ModelName.LGBM:
         fold_model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
     else:
         fold_model.fit(train_X, train_y)
+    return fold_model, val_X, val_y
 
 def get_fold_val_preds(model, val_X, val_y, metric, df_fold_val_preds, num_classes=None):
     metric_type = get_metric_type(metric)
@@ -290,19 +219,40 @@ def train_validate_fold(fold, model_name, model_params, preprocessor, df, featur
                                                             df_fold_val_preds, num_classes=num_classes)
     return fold_val_metric
 
+def impute_missing_values(df_train_fold, df_val_fold, imputation_config):
+    """
+    Imputes missing values in the given training and validation dataframes.
+
+    Args:
+        df_train_fold (pd.DataFrame): The training dataframe with missing values.
+        df_val_fold (pd.DataFrame): The validation dataframe with missing values.
+        imputation_config (dict): A dictionary containing column names as keys and imputers as values.
+
+    Returns:
+        None
+    """
+    for column, imputer in imputation_config.items():
+        imputer.fit(df_train_fold[[column]])
+        df_train_fold[column] = imputer.transform(df_train_fold[[column]])
+        df_val_fold[column] = imputer.transform(df_val_fold[[column]])
+
 def train_and_validate(model_name, model_params, preprocessor, df, feature_cols, 
-                       target_col_name, metric, n_repeat=1, single_fold=False, 
-                       num_folds=5, suppress_print=False, num_classes=None):    
+                       target_col_name, metric, single_fold=False, num_folds=5, 
+                       suppress_print=False, num_classes=None, imputation_config=None, cat_features=None, n_repeat=1):    
     df_oof_preds = pd.DataFrame()
     fold_metrics_model = []    
     for fold in range(num_folds):
         fold_model = get_model(model_name=model_name, params=model_params, metric=metric)
         df_train_fold, df_val_fold = get_fold_df(df, fold)
+        if imputation_config is not None:
+            impute_missing_values(df_train_fold, df_val_fold, imputation_config)
         train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_cols, target_col_name)
         if preprocessor is not None:
             train_X = preprocessor.fit_transform(train_X)
             val_X = preprocessor.transform(val_X)
-        fit_fold_model(model_name, model_params, fold_model, train_X, train_y, val_X, val_y)
+        fold_model, val_X, val_y = fit_fold_model(
+            model_name, model_params, fold_model, train_X, train_y, val_X, val_y, cat_features
+        )
         df_fold_val_preds = df_val_fold[['kfold', target_col_name]]
         fold_val_metric, df_fold_val_preds = get_fold_val_preds(fold_model, val_X, val_y, metric, 
                                                                 df_fold_val_preds, num_classes=num_classes)
