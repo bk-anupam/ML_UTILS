@@ -238,7 +238,8 @@ def impute_missing_values(df_train_fold, df_val_fold, imputation_config):
 
 def train_and_validate(model_name, model_params, preprocessor, df, feature_cols, 
                        target_col_name, metric, single_fold=False, num_folds=5, 
-                       suppress_print=False, num_classes=None, imputation_config=None, cat_features=None, n_repeat=1):    
+                       suppress_print=False, num_classes=None, imputation_config=None, cat_features=None, 
+                       cat_encoders=None):    
     df_oof_preds = pd.DataFrame()
     fold_metrics_model = []    
     for fold in range(num_folds):
@@ -246,6 +247,11 @@ def train_and_validate(model_name, model_params, preprocessor, df, feature_cols,
         df_train_fold, df_val_fold = get_fold_df(df, fold)
         if imputation_config is not None:
             impute_missing_values(df_train_fold, df_val_fold, imputation_config)
+        if cat_encoders is not None:
+            for col, encoders in cat_encoders.items():    
+                for encoder in encoders:
+                    df_train_fold[[col]] = encoder.fit_transform(df_train_fold[[col]], df_train_fold[target_col_name])
+                    df_val_fold[[col]] = encoder.transform(df_val_fold[[col]])
         train_X, train_y, val_X, val_y = get_train_val_nparray(df_train_fold, df_val_fold, feature_cols, target_col_name)
         if preprocessor is not None:
             train_X = preprocessor.fit_transform(train_X)
