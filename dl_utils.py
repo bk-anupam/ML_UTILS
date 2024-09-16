@@ -1,6 +1,13 @@
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts, ReduceLROnPlateau, OneCycleLR
 from transformers import get_linear_schedule_with_warmup
+from pytorch_lightning import LightningModule, Trainer
+from pytorch_lightning.callbacks import Callback
+import wandb
+from pytorch_lightning.loggers import WandbLogger
+import wandb
+from kaggle_secrets import UserSecretsClient
+
 
 def get_linear_lr_scheduler(optimizer, config_dict):
     # Scheduler and math around the number of training steps.    
@@ -15,7 +22,7 @@ def get_linear_lr_scheduler(optimizer, config_dict):
         )
     return lr_scheduler    
 
-def get_optimizer(lr, params, config_dict):
+def get_optimizer(lr, params, config_dict):   
     model_optimizer = None
     interval = "epoch"
     if config_dict["SCHEDULER"] != "ReduceLROnPlateau":
@@ -72,3 +79,49 @@ def get_optimizer(lr, params, config_dict):
             "frequency": 1
         }
     }
+
+def wandb_login():
+    user_secrets = UserSecretsClient()
+    wandb_secret = user_secrets.get_secret("wandb")
+    wandb.login(key=wandb_secret)
+
+def get_wandb_logger(fold, config_dict=None):
+    logger = None
+    wandb_key = None
+    if config_dict["RUNTIME"] == "KAGGLE":
+        user_secrets = UserSecretsClient()
+        wandb_key = user_secrets.get_secret("wandb")
+    else:
+        wandb_key = config_dict["WANDB_KEY"]    
+    wandb.login(key=wandb_key)        
+    logger = WandbLogger(
+        name=config_dict["WANDB_RUN_NAME"] + f"_fold{fold}", 
+        project=config_dict["WANDB_PROJECT"],
+        config=config_dict,
+        group=config_dict["MODEL_TO_USE"]
+    )
+    return logger
+
+class MetricsAggCallback(Callback):
+    def __init__(self, metric_to_monitor, mode):
+        self.metric_to_monitor = metric_to_monitor
+        self.metrics = []
+        self.best_metric = None
+        self.mode = mode
+        self.best_metric_epoch = None
+        self.val_epoch_num = 0
+    
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        self.val_epoch_num += 1
+        metric_value = trainer.callback_metrics[self.metric_to_monitor].detach().cpu().item()
+        val_loss = trainer.callback_metrics["val_loss"].cpu().detach().item()
+        current_lr = trainer.callback_metrics["cur_lr"].cpu().detach().item()
+        print(f"epoch = {self.val_epoch_num} => metric {self.metric_to_monitor} = {metric_value}, " \
+              f"val_loss={val_loss}, lr={current_lr}")
+        self.metrics.append(metric_value)
+        if self.mode == "max":
+            self.best_metric = max(self.metrics)            
+        else:
+            self.best_metric = min(self.metrics)
+        self.best_metric_epoch = self.metrics.index(self.best_metric)
+                        
