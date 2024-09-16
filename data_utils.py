@@ -12,6 +12,31 @@ def get_null_stats(df):
     else:
         print(col_null_counts)
 
+def get_col_stats(df):    
+    null_count = df.isnull().sum()
+    col_data = []
+    # Identify categorical columns
+    categorical_columns = df.select_dtypes(include=['object']).columns
+    # Iterate over each column in the dataframe
+    for col in df.columns:
+        # Get the null count for the column
+        null_cnt = null_count[col]        
+        # Check if the column is categorical
+        if col in categorical_columns:
+            unique_count = df[col].nunique(dropna=False)  # Count unique values including NaNs
+        else:
+            unique_count = 0  # Set to 0 for non-categorical columns        
+        # Append the column data type, null count, and unique count
+        col_data.append({
+            'col_name': col,
+            'datatype': df[col].dtype,
+            'null_count': null_cnt,
+            'unique_categories': unique_count
+        })
+    # Convert the collected data into a DataFrame
+    col_stats_df = pd.DataFrame(col_data)
+    return col_stats_df
+
 def get_outliers_count(df, col_name):
     """
     Calculate the count of outliers in a given column of a DataFrame.
@@ -180,3 +205,19 @@ def reduce_df_memory(df: pd.DataFrame):
     end_mem = df.memory_usage().sum() / 1024**2
     print(f"Start - end memory:- {start_mem:5.2f} - {end_mem:5.2f} Mb")
     return df    
+
+def get_categorical_cols_info(df):
+    # Identify categorical columns
+    categorical_columns = df.select_dtypes(include=['object']).columns
+    # Initialize an empty list to collect data for the new dataframe
+    category_data = []
+    # Iterate over each categorical column
+    for col in categorical_columns:
+        # Get value counts for each unique category in the column
+        category_counts = df[col].value_counts(dropna=False)
+        # Append the data to the list
+        for category, count in category_counts.items():
+            category_data.append([col, category, count])
+    # Create a new dataframe from the collected data
+    category_df = pd.DataFrame(category_data, columns=['col_name', 'col_category', 'category_count'])
+    return category_df
