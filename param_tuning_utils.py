@@ -12,16 +12,21 @@ def get_params_from_config(trial, param_ranges):
             params_dynamic[param] = trial.suggest_loguniform(param, range_config['min_value'], range_config['max_value'])
         elif range_config['type'] == 'int':
             if 'step' in range_config:
-                params_dynamic[param] = trial.suggest_int(param, range_config['min_value'], range_config['max_value'], step=range_config['step'])
+                params_dynamic[param] = trial.suggest_int(param, range_config['min_value'], range_config['max_value'], 
+                                                          step=range_config['step'])
             else:
                 params_dynamic[param] = trial.suggest_int(param, range_config['min_value'], range_config['max_value'])
         else:
             # check if key 'log' exists
             if 'log' in range_config:
-                p_log = range_config['log']
+                params_dynamic[param] = trial.suggest_float(param, range_config['min_value'], range_config['max_value'], 
+                                                            log=range_config['log'])
             else:
-                p_log = False
-            params_dynamic[param] = trial.suggest_float(param, range_config['min_value'], range_config['max_value'], log=p_log)
+                if 'step' in range_config:
+                    params_dynamic[param] = trial.suggest_float(param, range_config['min_value'], range_config['max_value'], 
+                                                                step=range_config['step'])
+                else:
+                    params_dynamic[param] = trial.suggest_float(param, range_config['min_value'], range_config['max_value'])
     return params_dynamic    
 
 def get_model_tuning_params(trial, model_name, static_params, param_ranges, tuning_level=None, 
