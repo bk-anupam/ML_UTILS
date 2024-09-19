@@ -368,3 +368,60 @@ def get_test_preds_clf(fold_metrics_model, df_test, feature_cols, preprocessor=N
     test_preds = np.argmax(test_preds_proba, axis=1)
     print(f"test_preds shape: {test_preds.shape}")
     return test_preds_proba, test_preds
+
+def get_candidate_features(df_feature_imp, feature_selection_method, base_features_count=None):
+    if feature_selection_method == "forward":
+        # all remanining features are candidate features (get rows from df_feature_imp that are not in base_features)
+        if base_features_count is None:
+            candidate_features = df_feature_imp.iloc[:]["f_name"].values
+        else:
+            candidate_features = df_feature_imp.iloc[base_features_count:, :]["f_name"].values        
+    else:
+        # for backward feature selection features from last to number of base features are candidate features
+        if base_features_count is None:
+            candidate_features = df_feature_imp.iloc[:]["f_name"].values
+        else:
+            candidate_features = df_feature_imp.iloc[base_features_count:]["f_name"].values
+        candidate_features = candidate_features[::-1]
+    return candidate_features    
+    
+def feature_selection(feature_selection_method, candidate_features, selected_features,
+    model_params, df_train, preprocessor, imputation_config, cat_encoders, cat_features, model_name,
+    target_col_name, metric, num_folds=5, single_fold=True, best_score_initial=0.0, metric_minimize=True):    
+    unselected_features = []
+    best_score = best_score_initial
+    print(f"FEATURE SELECTION METHOD = {feature_selection_method}")
+    for feature in candidate_features:
+        if feature_selection_method == "forward":
+            cur_features = np.append(selected_features, feature)
+        else:
+            cur_features = np.delete(selected_features, np.where(selected_features == feature))
+        fold_metrics_model, _, _ = train_and_validate(
+            model_name=model_name,
+            model_params=model_params,
+            preprocessor=preprocessor,
+            df=df_train,
+            feature_cols=cur_features,
+            target_col_name=target_col_name,
+            metric=metric,
+            single_fold=single_fold,
+            num_folds=num_folds,
+            suppress_print=True,
+            imputation_config=imputation_config,
+            cat_features=cat_features,
+            cat_encoders=cat_encoders
+        )
+        fold_metrics = [item[0] for item in fold_metrics_model]
+        cur_val_score = statistics.mean(fold_metrics)        
+        is_better_score = cur_val_score < best_score if metric_minimize else cur_val_score > best_score
+        if is_better_score:
+            print(f"feature selected = {feature} | cur_val_score = {cur_val_score} | best_score = {best_score}")
+            if feature_selection_method == "forward":
+                selected_features = np.append(selected_features, feature)
+            else:
+                selected_features = np.delete(selected_features, np.where(selected_features == feature))
+            best_score = cur_val_score
+        else:
+            print(f"feature not selected = {feature} | cur_val_score = {cur_val_score} | best_score = {best_score}")
+            unselected_features.append(feature)
+    return selected_features, unselected_features
