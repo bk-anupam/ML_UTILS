@@ -9,6 +9,8 @@ class ModelName:
     XGBoost = "XGBoost"
     CatBoost = "CatBoost"
     GradientBoostingRegressor = "GradientBoostingRegressor"
+    TabNetRegressor = "TabNetRegressor"
+    NeuralNet = "NN"
 
 class Scaler:
     StandardScaler = "StandardScaler"
