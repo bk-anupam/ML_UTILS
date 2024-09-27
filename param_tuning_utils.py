@@ -4,6 +4,8 @@ from functools import partial
 import train_tabular_utils as tt
 import enums
 from enums import ModelName
+from optuna.integration import XGBoostPruningCallback, LightGBMPruningCallback, CatBoostPruningCallback
+from optuna.pruners import MedianPruner
 
 def get_params_from_config(trial, param_ranges):
     params_dynamic = {}
@@ -73,7 +75,17 @@ def hyperparams_tuning_objective(trial, model_name, preprocessor, df,
         params_defaults=params_defaults,
         best_params_level1=best_params_level1, 
         best_params_level2=best_params_level2
-    )    
+    ) 
+    callbacks = None
+    if model_name == ModelName.XGBoost:
+        pruning_callback = XGBoostPruningCallback(trial, f"validation_0-{metric.lower()}")
+        callbacks = [pruning_callback]
+    elif model_name == ModelName.LGBM:
+        pruning_callback = LightGBMPruningCallback(trial, metric.lower())
+        callbacks = [pruning_callback]
+    elif model_name == ModelName.CatBoost and static_params[ModelName.CatBoost]['task_type'] != 'GPU':
+        pruning_callback = CatBoostPruningCallback(trial, metric)
+        callbacks = [pruning_callback]
     fold_metrics_model, _, _ = tt.train_and_validate(
                                         model_name=model_name,
                                         model_params=model_params,
@@ -87,7 +99,8 @@ def hyperparams_tuning_objective(trial, model_name, preprocessor, df,
                                         suppress_print=True,
                                         imputation_config=imputation_config,
                                         cat_features=cat_features,
-                                        cat_encoders=cat_encoders
+                                        cat_encoders=cat_encoders,
+                                        callbacks=callbacks
                                     )
     fold_metrics = [x[0] for x in fold_metrics_model]
     mean_metric = statistics.mean(fold_metrics)                
@@ -107,9 +120,15 @@ def tune_model_params(study_name, study_direction, num_trials, model_name,
                       level_params_totune=None, params_defaults=None, static_params=None):
     def create_study(level=None):
         if stepwise and level:
-            return optuna.create_study(direction=study_direction, study_name=f"{study_name}_level{level}")
+            return optuna.create_study(
+                direction=study_direction, 
+                study_name=f"{study_name}_level{level}",
+                pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=30))
         else:
-            return optuna.create_study(direction=study_direction, study_name=study_name)
+            return optuna.create_study(
+                direction=study_direction, 
+                study_name=study_name,
+                pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=30))
 
     def create_partial(level=None, best_params=None):
         return partial(
